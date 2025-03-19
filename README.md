@@ -10,9 +10,7 @@ pip install -r requirements.txt
 This code is compatible with Python 3.11.7
 You may need to install the version of PyTorch that is compatible with your version.
 
-## Reproducing the Experiments
-
-You can reproduce the experiments described in the paper using the following commands varying the seed (0-2):
+## Cmds for Experiments
 
 ### FedAvg
 ```bash
