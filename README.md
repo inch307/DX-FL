@@ -1,6 +1,4 @@
-# Federated Learning with Feedback Alignment
-
-This repository contains the anonymized implementation for the ICCV 2025 submission **"Federated Learning with Feedback Alignment."**
+# Data X Lab Federated Learning Framework
 
 ## Dependencies
 Ensure you have the necessary dependencies installed before running the experiments:
