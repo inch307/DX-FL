@@ -9,34 +9,31 @@ class ImageFolder_custom(DatasetFolder):
         self.transform = transform
         self.target_transform = target_transform
 
-        imagefolder_obj = ImageFolder(self.root, self.transform, self.target_transform)
+        imagefolder_obj = ImageFolder(self.root, transform=self.transform, target_transform=self.target_transform)
         self.loader = imagefolder_obj.loader
+
+        samples = imagefolder_obj.samples
         if self.dataidxs is not None:
-            self.samples = np.array(imagefolder_obj.samples)[self.dataidxs]
-        else:
-            self.samples = np.array(imagefolder_obj.samples)
+            samples = [samples[i] for i in self.dataidxs]
+
+        self.data = [s[0] for s in samples]
+        self.target = np.array([s[1] for s in samples])
 
     def __getitem__(self, index):
-        path = self.samples[index][0]
-        target = self.samples[index][1]
-        target = int(target)
+        path = self.data[index]
+        target = self.target[index]
         sample = self.loader(path)
+        
         if self.transform is not None:
             sample = self.transform(sample)
         if self.target_transform is not None:
             target = self.target_transform(target)
-
+            
         return sample, target
 
     def __len__(self):
-        if self.dataidxs is None:
-            return len(self.samples)
-        else:
-            return len(self.dataidxs)
+        return len(self.data)
     
-    # dataset.num_classes
     @property
     def num_classes(self):
         return len(np.unique(self.target))
-
-        

@@ -36,6 +36,9 @@ class FeedbackConvLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, padding=0, dilation=1, groups=1, bias=False):
         super(FeedbackConvLayer, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
         self.weight = nn.Parameter(torch.zeros(out_channels, in_channels // groups,
                                                 kernel_size, kernel_size))
         self.register_buffer('B', self.weight.data.clone())

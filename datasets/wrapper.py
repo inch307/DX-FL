@@ -7,7 +7,6 @@ class AugmentedDatasetWrapper(data.Dataset):
 
     def __getitem__(self, index):
         img, target = self.subset[index]
-        # 여기서 새로운 augmentation 적용
         img = self.transform(img)
         return img, target
 

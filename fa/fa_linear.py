@@ -24,6 +24,8 @@ class FeedbackLinearFunction(torch.autograd.Function):
 class FeedbackLinearLayer(nn.Module):
     def __init__(self, in_features, out_features, bias=True):
         super(FeedbackLinearLayer, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
         self.weight = nn.Parameter(torch.zeros(out_features, in_features))
 
         self.register_buffer('B', self.weight.data.clone())

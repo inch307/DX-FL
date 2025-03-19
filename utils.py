@@ -13,10 +13,11 @@ from torchvision import transforms
 
 from datasets.cifar10 import CIFAR10_truncated
 from datasets.cifar100 import CIFAR100_truncated
+from datasets.fmnist import FashionMNIST_truncated
 from datasets.folder import ImageFolder_custom
 from datasets.wrapper import AugmentedDatasetWrapper
 
-from models import mobilenet_v2, mobilenet_v2_fa, resnet_cifar, resnet_cifar_fa, cnn
+from models import resnet_cifar_fa
 
 def init_logger(args):
     os.makedirs(args.logdir, exist_ok=True)
@@ -40,13 +41,13 @@ def init_logger(args):
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
 
-    console_handler = logging.StreamHandler()            # 콘솔(표준 출력)용 핸들러 생성
-    console_handler.setLevel(logging.INFO)                # 콘솔 핸들러의 로깅 레벨 설정
+    console_handler = logging.StreamHandler()            
+    console_handler.setLevel(logging.INFO)             
     console_formatter = logging.Formatter(
         '%(asctime)s %(message)s',
         datefmt='%m-%d %H:%M'
-    )                                                     # 포맷터 생성
-    console_handler.setFormatter(console_formatter)       # 핸들러에 포맷터 적용
+    )                                                   
+    console_handler.setFormatter(console_formatter)       
     logger.addHandler(console_handler)    
 
     seed = args.seed
@@ -61,7 +62,25 @@ def init_logger(args):
     return logger, log_file_name
 
 def get_global_dataset(args):
-    if args.dataset == 'cifar10':
+    if args.dataset == 'fmnist':
+        normalize = transforms.Normalize(mean=[0.2860], std=[0.3530])
+        
+        transform_train = transforms.Compose([
+                transforms.RandomCrop(28, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                normalize
+            ])
+        # test set data prep
+        transform_test = transforms.Compose([
+                transforms.ToTensor(),
+                normalize])
+        
+        train_ds = FashionMNIST_truncated(args.datadir, train=True, transform=transform_train, download=True)
+        val_ds = None
+        test_ds = FashionMNIST_truncated(args.datadir, train=False, transform=transform_test, download=True)
+
+    elif args.dataset == 'cifar10':
         normalize = transforms.Normalize(mean=[x / 255.0 for x in [125.3, 123.0, 113.9]],
                                              std=[x / 255.0 for x in [63.0, 62.1, 66.7]])
         
@@ -102,24 +121,6 @@ def get_global_dataset(args):
         train_ds = CIFAR100_truncated(args.datadir, train=True, transform=transform_train, download=True)
         val_ds = None
         test_ds = CIFAR100_truncated(args.datadir, train=False, transform=transform_test, download=True)
-    
-    elif args.dataset == 'tinyimagenet':
-        dl_obj = ImageFolder_custom
-        transform_train = transforms.Compose([
-            transforms.RandomCrop(64, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(10),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4802,0.4481,0.3975), (0.2770,0.2691,0.2821)),
-        ])
-        transform_test = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4802,0.4481,0.3975), (0.2770,0.2691,0.2821)),
-        ])
-
-        train_ds = ImageFolder_custom(os.path.join(args.datadir, 'train'), transform=transform_train)
-        val_ds = None
-        test_ds = ImageFolder_custom(os.path.join(args.datadir, 'val'), transform=transform_test)
     
     return train_ds, val_ds, test_ds
 
@@ -223,21 +224,14 @@ def get_client_datasets(global_train_dataset, client_data_map, args):
 
 def get_client_meta_datasets(client_datasets, args):
     client_meta_datasets = {}
-    # TODO: transform
     transform = []
     for i in range(args.n_clients):
         client_meta_datasets[i] = (AugmentedDatasetWrapper(client_datasets[i], transform=transform))
 
     return client_meta_datasets
 
-# def worker_init_fn(worker_id, seed):
-#     np.random.seed(seed + worker_id)
-#     random.seed(seed + worker_id)
-#     torch.manual_seed(seed + worker_id)
 
 def get_global_dataloader(global_train_dataset, global_val_dataset, global_test_dataset, args):
-    # worker_init = partial(worker_init_fn, seed=args.seed)
-    # global_train_dataloader = data.DataLoader(dataset=global_train_dataset, batch_size=args.batch_size, drop_last=False, shuffle=True, pin_memory=True,num_workers=args.num_workers, worker_init_fn=worker_init)
     global_train_dataloader = data.DataLoader(dataset=global_train_dataset, batch_size=args.batch_size, drop_last=False, shuffle=True, pin_memory=True,num_workers=args.num_workers)
     global_val_dataloader = None
     if global_val_dataset is not None:
@@ -248,9 +242,7 @@ def get_global_dataloader(global_train_dataset, global_val_dataset, global_test_
 
 def get_client_dataloaders(client_datasets, args):
     dataloaders = {}
-    # worker_init = partial(worker_init_fn, seed=args.seed)
     for i in range(args.n_clients):
-        # client_train_dataloader = data.DataLoader(dataset=client_datasets[i], batch_size=args.batch_size, drop_last=True, shuffle=True, pin_memory=True,num_workers=args.num_workers, worker_init_fn=worker_init)
         client_train_dataloader = data.DataLoader(dataset=client_datasets[i], batch_size=args.batch_size, drop_last=True, shuffle=True, pin_memory=True,num_workers=args.num_workers)
         dataloaders[i] = client_train_dataloader
 
@@ -274,34 +266,13 @@ def init_nets(dataset, num_nets, args, device='cpu', base=False):
         norm_layer = lambda num_channels: nn.GroupNorm(num_groups=args.num_groups, num_channels=num_channels)
 
     for net_i in range(num_nets):
-        if args.model == 'resnet18':
-            if args.pre_fa or args.post_fa:
-                net = resnet_cifar_fa.ResNet18_cifar10_fa(num_classes=num_classes, norm_layer=norm_layer)
-            else:
-                net = resnet_cifar.ResNet18_cifar10(num_classes=num_classes, norm_layer=norm_layer)
-        elif args.model == 'resnet50':
+        if args.model == 'resnet50':
             if base:
-                net = resnet_cifar_fa.ResNet50_cifar10_fa(num_classes=num_classes, norm_layer=norm_layer, pre_fa=False, post_fa=False)
+                net = resnet_cifar_fa.ResNet50_cifar10_fa(in_channels=args.in_channels, num_classes=num_classes, norm_layer=norm_layer, pre_fa=False, post_fa=False)
             else:    
-                net = resnet_cifar_fa.ResNet50_cifar10_fa(num_classes=num_classes, norm_layer=norm_layer, pre_fa=args.pre_fa, post_fa=args.post_fa)
-            # if args.pre_fa or args.post_fa:
-            #     net = resnet_cifar_fa.ResNet50_cifar10_fa(num_classes=num_classes, norm_layer=norm_layer, pre_fa=args.pre_fa, post_fa=args.post_fa)
-            # else:
-            #     net = resnet_cifar.ResNet50_cifar10(num_classes=num_classes, norm_layer=norm_layer)
-        elif args.model == 'mobilenet':
-            # if args.pre_fa or args.post_fa:
-            # if args.fa:
-            if base:
-                net = mobilenet_v2_fa.MobileNetV2(num_classes=num_classes, norm_layer=norm_layer, pre_fa=False, post_fa=False)
-            else:
-                net = mobilenet_v2_fa.MobileNetV2(num_classes=num_classes, norm_layer=norm_layer, pre_fa=args.pre_fa, post_fa=args.post_fa)
-            # else:
-            #     net = mobilenet_v2.MobileNetV2(num_classes=num_classes, norm_layer=norm_layer)
-        elif args.model == 'cnn_2_32':
-            if args.pre_fa or args.post_fa:
-                net = cnn.CNN_2_32_fa(num_classes)
-            else:
-                net = cnn.CNN_2_32(num_classes)
+                net = resnet_cifar_fa.ResNet50_cifar10_fa(in_channels=args.in_channels, num_classes=num_classes, norm_layer=norm_layer, pre_fa=args.pre_fa, post_fa=args.post_fa)
+        else:
+            raise ValueError('wrong model config')
         net.to(device)
         nets[net_i] = net
 

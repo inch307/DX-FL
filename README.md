@@ -8,19 +8,53 @@ Ensure you have the necessary dependencies installed before running the experime
 pip install -r requirements.txt
 ```
 This code is compatible with Python 3.11.7
+You may need to install the version of PyTorch that is compatible with your version.
 
 ## Reproducing the Experiments
 
-You can reproduce the experiments described in the paper using the following commands varying the seed (0-3):
+You can reproduce the experiments described in the paper using the following commands varying the seed (0-2):
 
 ### FedAvg
 ```bash
-python main.py --dataset cifar10 --alg fedavg --model resnet50 --device cuda --epochs 10 --beta 0.3 --scheduler cosine --eta_min 0.001 --seed 0
-python main.py --dataset cifar10 --alg fedavg --model resnet50 --device cuda --sync_round 1 --epochs 10 --beta 0.3 --post_fa --linear_scale --scheduler cosine --eta_min 0.001 --seed 0
+python main.py --seed 0
+```
+### FedAvg with FLFA
+```bash
+python main.py --post_fa --seed 0
 ```
 
 ### FedAvgM
 ```bash
-python main.py --dataset cifar10 --alg fedavg --model resnet50 --device cuda --epochs 10 --beta 0.3 --scheduler cosine --eta_min 0.001 --seed 0 --server_momentum 0.1
-python main.py --dataset cifar10 --alg fedavg --model resnet50 --device cuda --sync_round 1 --epochs 10 --beta 0.3 --post_fa --linear_scale --scheduler cosine --eta_min 0.001 --seed 0 --server_momentum 0.1
+python main.py --seed 0 --server_momentum 0.1
+```
+### FedAvgM with FLFA
+```bash
+python main.py --seed 0 --server_momentum 0.1 --post_fa
+```
+
+### FedDecorr
+```bash
+python main.py --seed 0 --feddecorr --feddecorr_coef 0.1
+```
+### FedDecorr with FLFA
+```bash
+python main.py --seed 0 --feddecorr --feddecorr_coef 0.1 --post_fa
+```
+
+### FedProx
+```bash
+python main.py --alg fedprox --seed 0 --mu 0.1
+```
+### FedProx with FLFA
+```bash
+python main.py --alg fedprox -seed 0 --mu 0.1 --post_fa
+```
+
+### MOON
+```bash
+python main.py --alg moon --seed 0 --mu 0.1
+```
+### MOON with FLFA
+```bash
+python main.py --alg moon -seed 0 --mu 0.1 --post_fa
 ```

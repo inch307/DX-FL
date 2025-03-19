@@ -2,6 +2,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import math
+import numpy as np
 
 from algs.decorr import FedDecorrLoss
 from fa.fa_conv import FeedbackConvLayer
@@ -28,13 +29,12 @@ def fedavg(net, train_dataloader, optimizer, device, args):
             loss.backward()
             optimizer.step()
             # if args.pre_fa or args.post_fa and (args.scale_conv or args.scale_linear):
-            if args.pre_fa or args.post_fa:
-                with torch.no_grad():
-                    for m in net.modules():
-                        if isinstance(m, FeedbackConvLayer):
-                            m.scale_B()
-                        elif isinstance(m, FeedbackLinearLayer) and args.linear_scale:
-                            m.scale_B()
+            if not args.no_scale:
+                if args.pre_fa or args.post_fa:
+                    with torch.no_grad():
+                        for m in net.modules():
+                            if isinstance(m, FeedbackConvLayer) or isinstance(m, FeedbackLinearLayer):
+                                m.scale_B()
 
     net.zero_grad()
     return total_loss / len(train_dataloader) / args.epochs
@@ -119,18 +119,23 @@ def moon(net, global_model, previous_net, train_dataloader, optimizer, device, a
     net.zero_grad()
     return total_loss / len(train_dataloader) / args.epochs
 
-def adjust_lr(round, args):
+def adjust_lr(round, current_lr, args):
     if args.scheduler == 'linear':
-        lr = args.eta_min + (args.lr - args.eta_min) * (1 - round / args.round)
+        new_lr = args.eta_min + (args.lr - args.eta_min) * (1 - round / args.round)
     elif args.scheduler == 'cosine':
-        lr = args.eta_min + (args.lr - args.eta_min) * 0.5 * (1 + math.cos(math.pi * round / args.round))
+        new_lr = args.eta_min + (args.lr - args.eta_min) * 0.5 * (1 + math.cos(math.pi * round / args.round))
+    elif args.scheduler == 'step':
+        if (round + 1) in args.schedule_round:
+            new_lr = current_lr * args.lr_gamma
+        else:
+            new_lr = current_lr
     else:
-        lr = args.lr
-    return lr
+        new_lr = current_lr
+    return new_lr
 
-def train_local_net(dataloaders, nets, global_model, prev_nets, device, round, args, logger):
+def train_local_net(dataloaders, nets, global_model, prev_nets, device, round, lr, args, logger):
     total_loss = 0.0
-    lr = adjust_lr(round, args)
+    lr = adjust_lr(round, lr, args)
 
     for net_id, net in nets.items():
         net.train()
@@ -156,4 +161,4 @@ def train_local_net(dataloaders, nets, global_model, prev_nets, device, round, a
 
     avg_loss = total_loss / len(nets)
     logger.info(f'At round: {round}, avg_loss: {avg_loss:.4f}, lr: {lr:.6f}')
-    return avg_loss
+    return avg_loss, lr

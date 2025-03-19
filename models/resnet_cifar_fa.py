@@ -10,6 +10,7 @@ import torch.nn as nn
 from fa import fa_conv
 from fa import fa_linear
 import math
+import torch.nn.functional as F
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
@@ -35,7 +36,7 @@ class BasicBlock(nn.Module):
     expansion = 1
 
     def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None):
+                 base_width=64, dilation=1, norm_layer=None, pre_fa=False, post_fa=False):
         super(BasicBlock, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -44,11 +45,16 @@ class BasicBlock(nn.Module):
         if dilation > 1:
             raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        # self.conv1 = conv3x3_fa(inplanes, planes, stride)
+        if pre_fa:
+            self.conv1 = conv3x3_fa(inplanes, planes, stride)
+        else:
+            self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = norm_layer(planes)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
+        if post_fa:
+            self.conv2 = conv3x3_fa(planes, planes)
+        else:
+            self.conv2 = conv3x3(planes, planes)
         self.bn2 = norm_layer(planes)
         self.downsample = downsample
         self.stride = stride
@@ -130,14 +136,16 @@ class Bottleneck(nn.Module):
 
 class ResNetCifar10(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
+    def __init__(self, block, layers, in_channels=3, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None, pre_fa=False, post_fa=False):
         super(ResNetCifar10, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
+        self.in_channels = in_channels
         self.pre_fa = pre_fa
         self.post_fa = post_fa
+        self.fa_counter = 0
         self._norm_layer = norm_layer
 
         self.inplanes = 64
@@ -151,7 +159,7 @@ class ResNetCifar10(nn.Module):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1,
+        self.conv1 = nn.Conv2d(self.in_channels, self.inplanes, kernel_size=3, stride=1, padding=1,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -163,6 +171,7 @@ class ResNetCifar10(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        
         if self.pre_fa or self.post_fa:
             self.fc = fa_linear.FeedbackLinearLayer(512 * block.expansion, num_classes)
         else:
@@ -209,15 +218,20 @@ class ResNetCifar10(nn.Module):
 
         layers = []
         layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
-                            self.base_width, previous_dilation, norm_layer, pre_fa=self.pre_fa, post_fa=self.post_fa))
+                            self.base_width, previous_dilation, norm_layer, pre_fa=False, post_fa=False))
         self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
+        for i in range(1, blocks):
+            if i == blocks-1:
+                pre_fa, post_fa = self.pre_fa, self.post_fa
+            else:
+                pre_fa, post_fa = False, False
+
             layers.append(block(self.inplanes, planes, groups=self.groups,
                                 base_width=self.base_width, dilation=self.dilation,
-                                norm_layer=norm_layer, pre_fa=self.pre_fa, post_fa=self.post_fa))
+                                norm_layer=norm_layer, pre_fa=pre_fa, post_fa=post_fa))
 
         return nn.Sequential(*layers)
-
+    
     def _forward_impl(self, x):
         x = self.conv1(x)
         x = self.bn1(x)
@@ -230,24 +244,12 @@ class ResNetCifar10(nn.Module):
 
         x = self.avgpool(x)
         features = torch.flatten(x, 1)
-        out = self.fc(features)
+        y = self.fc(features)
 
-        return features, out
+        return features, y
 
     def forward(self, x):
         return self._forward_impl(x)
-
-
-def ResNet18_cifar10_fa(**kwargs):
-    r"""ResNet-18 model from
-    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
-
-    Args:
-        pretrained (bool): If True, returns a model pre-trained on ImageNet
-        progress (bool): If True, displays a progress bar of the download to stderr
-    """
-    return ResNetCifar10(BasicBlock, [2, 2, 2, 2], **kwargs)
-
 
 
 def ResNet50_cifar10_fa(**kwargs):
