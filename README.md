@@ -1,4 +1,4 @@
-# Data X Lab Federated Learning Framework
+# Data X Lab Federated Learning Framework (DX-FL)
 
 ## Dependencies
 Ensure you have the necessary dependencies installed before running the experiments:
